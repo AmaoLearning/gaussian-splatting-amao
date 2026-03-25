@@ -110,6 +110,26 @@ class MGSTrainingHelper:
             return False
         return (iteration % self.update_interval == 0)
     
+    def update_sort_indices(self, gaussians, iteration: int):
+        """更新排序索引"""
+        if not self.use_mgs:
+            return
+        
+        self._sort_indices = gaussians.get_mgs_sort_indices(self.sort_strategy)
+        self._last_update_iteration = iteration
+        print(f"[MGS] 已更新排序索引 (iteration={iteration}, 高斯点数量={len(self._sort_indices)})")
+    
+    def get_cached_sort_indices(self) -> Optional[torch.Tensor]:
+        """
+        获取缓存的排序索引
+        
+        Returns:
+            排序索引张量
+        """
+        if not hasattr(self, '_sort_indices') or self._sort_indices is None:
+            raise RuntimeError("Sort indices not cached. Call update_sort_indices() first.")
+        return self._sort_indices
+    
     def get_subsets(
         self,
         gaussians,
@@ -129,7 +149,7 @@ class MGSTrainingHelper:
             return None
         
         # 获取排序索引
-        sort_indices = gaussians.get_cached_mgs_sort_indices()
+        sort_indices = self.get_cached_sort_indices()
         num_splats = len(sort_indices)
         
         # 采样子集
@@ -151,7 +171,10 @@ class MGSTrainingHelper:
         subsets: List[Dict[str, Any]],
         use_ssim: bool = True,
         lambda_dssim: float = 0.2,
-    ) -> tuple[torch.Tensor, Dict[str, float]]:
+        use_trained_exp: bool = False,
+        separate_sh: bool = False,
+        use_fused_ssim: bool = False,
+    ) -> tuple[torch.Tensor, Dict[str, Any], Optional[Dict[str, Any]]]:
         """
         计算多子集损失
         
@@ -164,16 +187,23 @@ class MGSTrainingHelper:
             subsets: 子集列表
             use_ssim: 是否使用 SSIM
             lambda_dssim: SSIM 权重
+            use_trained_exp: 是否使用训练的曝光
+            separate_sh: 是否分离处理 DC 和高频 SH
+            use_fused_ssim: 是否使用 Fused SSIM
             
         Returns:
             total_loss: 总损失
-            loss_dict: 损失字典
+            loss_dict: 损失字典，包含 total_loss, l1_loss, ssim_loss 等
+            full_render_pkg: 最大子集（通常是完整点云）的渲染结果包
         """
         from gaussian_renderer import render
         from utils.loss_utils import l1_loss, ssim
         
         total_loss = 0.0
+        Ll1_accum = 0.0
+        ssim_accum = 0.0
         loss_dict = {}
+        full_render_pkg = None
         
         for idx, subset in enumerate(subsets):
             subset_indices = subset["indices"]
@@ -189,9 +219,15 @@ class MGSTrainingHelper:
                 pipe,
                 background,
                 overrides=subset_params,
+                use_trained_exp=use_trained_exp,
+                separate_sh=separate_sh,
             )
             
             rendered_image = render_pkg["render"]
+            
+            # 保存最大子集（最后一个）的渲染结果
+            if idx == len(subsets) - 1:
+                full_render_pkg = render_pkg
             
             # 应用 alpha mask（如果有）
             if viewpoint_cam.alpha_mask is not None:
@@ -202,21 +238,40 @@ class MGSTrainingHelper:
             Ll1 = l1_loss(rendered_image, gt_image)
             
             if use_ssim:
-                ssim_value = ssim(rendered_image, gt_image)
+                if use_fused_ssim:
+                    # 使用 Fused SSIM（需要额外导入）
+                    try:
+                        from fused_ssim import fused_ssim
+                        ssim_value = fused_ssim(rendered_image.unsqueeze(0), gt_image.unsqueeze(0))
+                    except:
+                        ssim_value = ssim(rendered_image, gt_image)
+                else:
+                    ssim_value = ssim(rendered_image, gt_image)
+                
                 loss = (1.0 - lambda_dssim) * Ll1 + lambda_dssim * (1.0 - ssim_value)
             else:
                 loss = Ll1
+                ssim_value = torch.tensor(0.0)
             
             # 累加损失
             total_loss += loss * weight
+            Ll1_accum += Ll1 * weight
+            ssim_accum += ssim_value * weight
             
             # 记录每个子集的损失
-            loss_dict[f"loss_subset_{idx}"] = loss.item()
+            loss_dict[f"l1_subset_{idx}"] = Ll1.item()
+            if use_ssim:
+                loss_dict[f"ssim_subset_{idx}"] = ssim_value.item()
         
         # 平均化（如果多个子集）
         if len(subsets) > 1:
             total_loss = total_loss / len(subsets)
+            Ll1_accum = Ll1_accum / len(subsets)
+            ssim_accum = ssim_accum / len(subsets)
         
         loss_dict["total_loss"] = total_loss.item()
+        loss_dict["l1_loss"] = Ll1_accum.item()
+        if use_ssim:
+            loss_dict["ssim_loss"] = ssim_accum.item()
         
-        return total_loss, loss_dict
+        return total_loss, loss_dict, full_render_pkg

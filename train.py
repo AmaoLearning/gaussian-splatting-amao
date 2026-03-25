@@ -134,22 +134,53 @@ def training(dataset, opt, pipe, mgs, testing_iterations, saving_iterations, che
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
-
-        if viewpoint_cam.alpha_mask is not None:
-            alpha_mask = viewpoint_cam.alpha_mask.cuda()
-            image *= alpha_mask
-
-        # Loss
-        gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
-        if FUSED_SSIM_AVAILABLE:
-            ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+        # === MGS 多子集训练 ===
+        if mgs_helper.use_mgs:
+            # 获取子集列表
+            subsets = mgs_helper.get_subsets(gaussians, iteration)
+            
+            # 使用 MGSTrainingHelper 的 compute_multi_subset_loss 方法
+            gt_image = viewpoint_cam.original_image.cuda()
+            loss, loss_dict, full_render_pkg = mgs_helper.compute_multi_subset_loss(
+                viewpoint_cam=viewpoint_cam,
+                gaussians=gaussians,
+                pipe=pipe,
+                background=bg,
+                gt_image=gt_image,
+                subsets=subsets,
+                use_ssim=True,
+                lambda_dssim=opt.lambda_dssim,
+                use_trained_exp=dataset.train_test_exp,
+                separate_sh=SPARSE_ADAM_AVAILABLE,
+                use_fused_ssim=FUSED_SSIM_AVAILABLE,
+            )
+            
+            # 从 full_render_pkg 中获取 visibility_filter 等信息
+            image, viewspace_point_tensor, visibility_filter, radii = \
+                full_render_pkg["render"], full_render_pkg["viewspace_points"], \
+                full_render_pkg["visibility_filter"], full_render_pkg["radii"]
+            
+            # 从 loss_dict 中恢复 Ll1 和 ssim_value 用于日志
+            Ll1 = torch.tensor(loss_dict["l1_loss"], device="cuda")
+            ssim_value = torch.tensor(loss_dict.get("ssim_loss", 0.0), device="cuda")
         else:
-            ssim_value = ssim(image, gt_image)
+            # 标准训练（单子集）
+            render_pkg = render(viewpoint_cam, gaussians, pipe, bg, use_trained_exp=dataset.train_test_exp, separate_sh=SPARSE_ADAM_AVAILABLE)
+            image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
-        loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+            if viewpoint_cam.alpha_mask is not None:
+                alpha_mask = viewpoint_cam.alpha_mask.cuda()
+                image *= alpha_mask
+
+            # Loss
+            gt_image = viewpoint_cam.original_image.cuda()
+            Ll1 = l1_loss(image, gt_image)
+            if FUSED_SSIM_AVAILABLE:
+                ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
+            else:
+                ssim_value = ssim(image, gt_image)
+
+            loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
 
         # Depth regularization
         Ll1depth_pure = 0.0
