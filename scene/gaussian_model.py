@@ -471,3 +471,77 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+
+    # === MGS 扩展方法 ===
+
+    def get_mgs_sort_indices(self, strategy: str = "by_volume_descending") -> torch.Tensor:
+        """
+        获取 MGS 排序索引（3DGS 原生方法）
+        
+        Args:
+            strategy: 排序策略，可选："by_volume_descending", "by_opacity_descending", 
+                     "by_sh_energy_descending", "by_color_variance_descending", "random"
+            
+        Returns:
+            sort_indices: 排序后的索引
+        """
+        from mgs.sorting import SplatSorter
+        
+        sorter = SplatSorter(strategy=strategy)
+        # 直接传入 self（GaussianModel 实例）
+        return sorter.argsort(self)
+    
+    def get_mgs_subset_params(self, indices: torch.Tensor) -> dict:
+        """
+        获取指定索引的子集参数（用于渲染覆盖）
+        
+        Args:
+            indices: 高斯点索引
+            
+        Returns:
+            子集参数字典，直接用于 gaussian_renderer.render() 的 overrides 参数
+        """
+        return {
+            "xyz": self.get_xyz[indices],
+            "features_dc": self.get_features_dc[indices],
+            "features_rest": self.get_features_rest[indices],
+            "opacity": self.get_opacity[indices],
+            "scaling": self.get_scaling[indices],
+            "rotation": self.get_rotation[indices],
+        }
+    
+    def update_mgs_sort_indices(self, strategy: str = "by_volume_descending"):
+        """
+        更新并缓存排序索引（建议在 densify_and_prune 后调用）
+        
+        Args:
+            strategy: 排序策略
+        """
+        self._mgs_sort_indices = self.get_mgs_sort_indices(strategy)
+        self._mgs_sort_strategy = strategy
+    
+    def get_cached_mgs_sort_indices(self) -> torch.Tensor:
+        """
+        获取缓存的排序索引（如果存在）
+        
+        Returns:
+            sort_indices: 缓存的排序索引
+        """
+        if not hasattr(self, '_mgs_sort_indices'):
+            raise RuntimeError("MGS sort indices not cached. Call update_mgs_sort_indices() first.")
+        return self._mgs_sort_indices
+    
+    def get_mgs_sorted_subset_params(self, count: int, strategy: str = "by_volume_descending") -> dict:
+        """
+        获取排序后的前 N 个高斯点子集参数
+        
+        Args:
+            count: 需要的高斯点数量
+            strategy: 排序策略
+            
+        Returns:
+            子集参数字典
+        """
+        sort_indices = self.get_mgs_sort_indices(strategy)
+        subset_indices = sort_indices[:min(count, len(sort_indices))]
+        return self.get_mgs_subset_params(subset_indices)

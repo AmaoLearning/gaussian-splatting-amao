@@ -99,6 +99,29 @@ class OptimizationParams(ParamGroup):
         self.optimizer_type = "default"
         super().__init__(parser, "Optimization Parameters")
 
+class MGSParams(ParamGroup):
+    def __init__(self, parser):
+        # MGS 基础参数
+        self.mgs_use = True  # 是否启用 MGS
+        self.mgs_sort_strategy = "by_opacity_descending"  # 排序策略
+        self.mgs_update_interval = 1  # 排序索引更新间隔
+        
+        # MRL Scheduler 参数
+        self.mgs_scheduler_type = "mrl"  # "mrl" 或 "diffusion"
+        self.mgs_cap_max = 5_000_000  # 最大高斯点数量
+        self.mgs_min_splats = 100_000  # 最小高斯点数量
+        self.mgs_nesting_base_max = None  # MRL 论文缩放基准
+        
+        # Diffusion Scheduler 参数
+        self.mgs_diffusion_num_timesteps = 1000  # 时间步数量
+        self.mgs_diffusion_num_subsets = 4  # 子集数量
+        self.mgs_diffusion_schedule = "cosine"  # 调度类型
+        self.mgs_diffusion_min_keep_ratio = 0.0  # 最小保留比例
+        self.mgs_diffusion_max_keep_ratio = 0.9  # 最大保留比例
+        self.mgs_diffusion_include_full_subset = True  # 是否包含完整子集
+        
+        super().__init__(parser, "MGS Parameters")
+
 def get_combined_args(parser : ArgumentParser):
     cmdlne_string = sys.argv[1:]
     cfgfile_string = "Namespace()"

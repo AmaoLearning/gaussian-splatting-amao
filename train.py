@@ -21,7 +21,8 @@ import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
-from arguments import ModelParams, PipelineParams, OptimizationParams
+from arguments import ModelParams, PipelineParams, OptimizationParams, MGSParams
+from mgs import MGSTrainingHelper
 try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_FOUND = True
@@ -40,7 +41,7 @@ try:
 except:
     SPARSE_ADAM_AVAILABLE = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+def training(dataset, opt, pipe, mgs, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
 
     if not SPARSE_ADAM_AVAILABLE and opt.optimizer_type == "sparse_adam":
         sys.exit(f"Trying to use sparse adam but it is not installed, please install the correct rasterizer using pip install [3dgs_accel].")
@@ -53,6 +54,28 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
         gaussians.restore(model_params, opt)
+
+    # === MGS 初始化（使用参数）===
+    mgs_helper = MGSTrainingHelper(
+        use_mgs=mgs.mgs_use,
+        scheduler_type=mgs.mgs_scheduler_type,
+        cap_max=mgs.mgs_cap_max,
+        min_splats=mgs.mgs_min_splats,
+        nesting_base_max=mgs.mgs_nesting_base_max,
+        sort_strategy=mgs.mgs_sort_strategy,
+        update_interval=mgs.mgs_update_interval,
+        diffusion_num_timesteps=mgs.mgs_diffusion_num_timesteps,
+        diffusion_num_subsets=mgs.mgs_diffusion_num_subsets,
+        diffusion_schedule=mgs.mgs_diffusion_schedule,
+        diffusion_min_keep_ratio=mgs.mgs_diffusion_min_keep_ratio,
+        diffusion_max_keep_ratio=mgs.mgs_diffusion_max_keep_ratio,
+        diffusion_include_full_subset=mgs.mgs_diffusion_include_full_subset,
+    )
+    print("[MGS] 已初始化训练辅助")
+    print(f"  启用 MGS: {mgs_helper.use_mgs}")
+    print(f"  Scheduler 类型：{mgs_helper.scheduler_type}")
+    print(f"  排序策略：{mgs_helper.sort_strategy}")
+    print(f"  更新间隔：{mgs_helper.update_interval} 步")
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
@@ -93,6 +116,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         # Every 1000 its we increase the levels of SH up to a maximum degree
         if iteration % 1000 == 0:
             gaussians.oneupSHdegree()
+
+        # === MGS 每步更新排序索引 ===
+        mgs_helper.update_sort_indices(gaussians, iteration)
 
         # Pick a random Camera
         if not viewpoint_stack:
@@ -257,6 +283,7 @@ if __name__ == "__main__":
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
     pp = PipelineParams(parser)
+    mgs = MGSParams(parser)  # ← MGS 参数
     parser.add_argument('--ip', type=str, default="127.0.0.1")
     parser.add_argument('--port', type=int, default=6009)
     parser.add_argument('--debug_from', type=int, default=-1)
@@ -279,7 +306,7 @@ if __name__ == "__main__":
     if not args.disable_viewer:
         network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), mgs.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
 
     # All done
     print("\nTraining complete.")

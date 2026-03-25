@@ -15,11 +15,24 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False):
+def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, separate_sh = False, override_color = None, use_trained_exp=False, overrides = None):
     """
     Render the scene. 
     
-    Background tensor (bg_color) must be on GPU!
+    Args:
+        viewpoint_camera: 视点相机
+        pc: GaussianModel 实例
+        pipe: 渲染管线配置
+        bg_color: 背景颜色
+        scaling_modifier: 缩放修正因子
+        separate_sh: 是否分离处理 DC 和高频 SH
+        override_color: 覆盖颜色
+        use_trained_exp: 是否使用训练的曝光
+        overrides: 可选的子集参数字典，包含 xyz, features_dc, features_rest, 
+                   opacity, scaling, rotation，用于子集渲染
+    
+    Returns:
+        渲染结果字典
     """
  
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
@@ -51,9 +64,30 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-    means3D = pc.get_xyz
-    means2D = screenspace_points
-    opacity = pc.get_opacity
+    # === 高斯参数获取（支持覆盖模式） ===
+    if overrides is not None:
+        # 子集渲染模式：使用覆盖参数
+        means3D = overrides["xyz"]
+        opacity = overrides["opacity"]
+        features_dc = overrides["features_dc"]
+        features_rest = overrides["features_rest"]
+        scaling = overrides["scaling"]
+        rotations = overrides["rotation"]
+        
+        # 更新 screenspace_points 以匹配子集大小
+        screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
+        try:
+            screenspace_points.retain_grad()
+        except:
+            pass
+    else:
+        # 标准模式：使用 pc (GaussianModel) 的参数
+        means3D = pc.get_xyz
+        opacity = pc.get_opacity
+        scaling = pc.get_scaling
+        rotations = pc.get_rotation
+        features_dc = pc.get_features_dc
+        features_rest = pc.get_features_rest
 
     # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
     # scaling / rotation by the rasterizer.
@@ -64,8 +98,8 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     if pipe.compute_cov3D_python:
         cov3D_precomp = pc.get_covariance(scaling_modifier)
     else:
-        scales = pc.get_scaling
-        rotations = pc.get_rotation
+        scales = scaling
+        rotations = rotations
 
     # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
     # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.
@@ -73,20 +107,21 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
     colors_precomp = None
     if override_color is None:
         if pipe.convert_SHs_python:
-            shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
-            dir_pp = (pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1))
+            shs_view = features_dc.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
+            dir_pp = (means3D - viewpoint_camera.camera_center.repeat(features_dc.shape[0], 1))
             dir_pp_normalized = dir_pp/dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else:
             if separate_sh:
-                dc, shs = pc.get_features_dc, pc.get_features_rest
+                dc, shs = features_dc, features_rest
             else:
-                shs = pc.get_features
+                shs = torch.cat((features_dc, features_rest), dim=1)
     else:
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
+    means2D = screenspace_points
     if separate_sh:
         rendered_image, radii, depth_image = rasterizer(
             means3D = means3D,
