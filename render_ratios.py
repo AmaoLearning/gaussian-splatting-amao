@@ -94,7 +94,8 @@ def render_set_with_ratios(
             print(f"\n比例 {ratio:.2f}: {keep_count:,} / {total_gaussians:,} 个点 ({ratio*100:.1f}%)")
         
         # 获取子集参数
-        subset_params = mgs_helper.get_subset_for_ratio(gaussians, ratio, iteration=0)
+        subset_result = mgs_helper.get_subset_for_ratio(gaussians, ratio)
+        subset_params = subset_result["subset_params"]
         
         # 渲染所有视图
         for idx, view in enumerate(tqdm(views, desc=f"Ratio {ratio:.2f}", disable=quiet, leave=False)):

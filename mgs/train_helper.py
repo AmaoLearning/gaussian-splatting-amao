@@ -160,6 +160,42 @@ class MGSTrainingHelper:
         
         return subsets
     
+    def get_subset_for_ratio(
+        self,
+        gaussians,
+        ratio: float,
+    ) -> Dict[str, Any]:
+        """
+        获取指定比例的子集参数（用于渲染评估）
+        
+        Args:
+            gaussians: GaussianModel 实例
+            ratio: 保留比例 (0.0 ~ 1.0)
+            
+        Returns:
+            子集参数字典，包含 indices 和 subset_params
+        """
+        # 获取排序索引
+        sort_indices = self.get_cached_sort_indices()
+        num_splats = len(sort_indices)
+        
+        # 计算保留数量
+        keep_count = max(1, int(num_splats * ratio))
+        
+        # 获取前 keep_count 个索引
+        subset_indices = sort_indices[:keep_count]
+        
+        # 获取子集参数
+        subset_params = gaussians.get_mgs_subset_params(subset_indices)
+        
+        return {
+            "indices": subset_indices,
+            "subset_params": subset_params,
+            "keep_count": keep_count,
+            "total_count": num_splats,
+            "ratio": ratio,
+        }
+    
     def compute_multi_subset_loss(
         self,
         viewpoint_cam,
