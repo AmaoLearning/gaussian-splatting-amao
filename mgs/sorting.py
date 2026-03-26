@@ -69,7 +69,6 @@ class SplatSorter:
         
         if is_gaussian_model:
             # 3DGS GaussianModel 格式 - property 直接访问（不需要括号）
-            print(f"[DEBUG]   _xyz shape: {splats._xyz.shape if hasattr(splats, '_xyz') else 'N/A'}")
             means = splats.get_xyz
             scales = splats.get_scaling
             quats = splats.get_rotation
@@ -78,7 +77,6 @@ class SplatSorter:
             shN = splats.get_features_rest
         else:
             # ParameterDict 格式 - 保持向后兼容
-            print(f"[DEBUG]   Falling back to ParameterDict format")
             means = splats["means"]
             scales = splats["scales"]
             quats = splats["quats"]

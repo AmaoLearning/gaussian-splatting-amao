@@ -117,7 +117,6 @@ class MGSTrainingHelper:
         
         self._sort_indices = gaussians.get_mgs_sort_indices(self.sort_strategy)
         self._last_update_iteration = iteration
-        print(f"[MGS] 已更新排序索引 (iteration={iteration}, 高斯点数量={len(self._sort_indices)})")
     
     def get_cached_sort_indices(self) -> Optional[torch.Tensor]:
         """
