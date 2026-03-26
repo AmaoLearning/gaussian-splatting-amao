@@ -67,12 +67,12 @@ class SplatSorter:
         
         if is_gaussian_model:
             # 3DGS GaussianModel 格式 - 直接调用其方法
-            means = splats.get_xyz
-            scales = splats.get_scaling
-            quats = splats.get_rotation
-            opacities = splats.get_opacity
-            sh0 = splats.get_features_dc
-            shN = splats.get_features_rest
+            means = splats.get_xyz()
+            scales = splats.get_scaling()
+            quats = splats.get_rotation()
+            opacities = splats.get_opacity()
+            sh0 = splats.get_features_dc()
+            shN = splats.get_features_rest()
         else:
             # ParameterDict 格式 - 保持向后兼容
             means = splats["means"]
