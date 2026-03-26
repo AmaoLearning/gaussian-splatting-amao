@@ -63,18 +63,22 @@ class SplatSorter:
             sort_indices: 排序后的索引
         """
         # === 自动检测输入类型 ===
-        is_gaussian_model = hasattr(splats, 'get_xyz') and callable(getattr(splats, 'get_xyz'))
+        # 3DGS GaussianModel 有 _xyz, _rotation 等私有属性和 get_xyz 等 property
+        # 检查是否有 _xyz 属性（最可靠的 GaussianModel 标志）
+        is_gaussian_model = hasattr(splats, '_xyz')
         
         if is_gaussian_model:
-            # 3DGS GaussianModel 格式 - 直接调用其方法
-            means = splats.get_xyz()
-            scales = splats.get_scaling()
-            quats = splats.get_rotation()
-            opacities = splats.get_opacity()
-            sh0 = splats.get_features_dc()
-            shN = splats.get_features_rest()
+            # 3DGS GaussianModel 格式 - property 直接访问（不需要括号）
+            print(f"[DEBUG]   _xyz shape: {splats._xyz.shape if hasattr(splats, '_xyz') else 'N/A'}")
+            means = splats.get_xyz
+            scales = splats.get_scaling
+            quats = splats.get_rotation
+            opacities = splats.get_opacity
+            sh0 = splats.get_features_dc
+            shN = splats.get_features_rest
         else:
             # ParameterDict 格式 - 保持向后兼容
+            print(f"[DEBUG]   Falling back to ParameterDict format")
             means = splats["means"]
             scales = splats["scales"]
             quats = splats["quats"]
