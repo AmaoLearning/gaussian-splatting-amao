@@ -5,7 +5,7 @@ MGS 训练集成辅助模块
 支持自主选择 MRL 或 Diffusion 风格的 subset scheduler。
 """
 import torch
-from typing import Optional, List, Dict, Any, Literal, Union, Tuple
+from typing import Optional, List, Dict, Any, Union, Tuple
 
 
 class MGSTrainingHelper:
@@ -22,7 +22,7 @@ class MGSTrainingHelper:
     def __init__(
         self,
         use_mgs: bool = False,
-        scheduler_type: Literal["mrl", "diffusion"] = "mrl",
+        scheduler_type: str = "mrl",
         # MRL 参数
         cap_max: int = 5_000_000,
         min_splats: int = 100_000,
