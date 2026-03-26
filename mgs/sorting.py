@@ -1,5 +1,5 @@
 import torch
-from typing import Optional
+from typing import Optional, Tuple
 
 FIXED_ORDER_POLICIES = {
     "fixed_append": "append",
@@ -16,7 +16,7 @@ class SplatSorter:
     def __init__(self, strategy: str = "by_volume_descending"):
         self.strategy = strategy
 
-    def _parse_strategy(self) -> tuple[str, bool]:
+    def _parse_strategy(self) -> Tuple[str, bool]:
         strategy = self.strategy
         if strategy.endswith("_ascending"):
             base = strategy[: -len("_ascending")]

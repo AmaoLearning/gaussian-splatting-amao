@@ -5,7 +5,7 @@ MGS 训练集成辅助模块
 支持自主选择 MRL 或 Diffusion 风格的 subset scheduler。
 """
 import torch
-from typing import Optional, List, Dict, Any, Literal, Union
+from typing import Optional, List, Dict, Any, Literal, Union, Tuple
 
 
 class MGSTrainingHelper:
@@ -174,7 +174,7 @@ class MGSTrainingHelper:
         use_trained_exp: bool = False,
         separate_sh: bool = False,
         use_fused_ssim: bool = False,
-    ) -> tuple[torch.Tensor, Dict[str, Any], Optional[Dict[str, Any]]]:
+    ) -> Tuple[torch.Tensor, Dict[str, Any], Optional[Dict[str, Any]]]:
         """
         计算多子集损失
         
