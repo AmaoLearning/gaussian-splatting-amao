@@ -116,7 +116,10 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             if separate_sh:
                 dc, shs = features_dc, features_rest
             else:
-                shs = torch.cat((features_dc, features_rest), dim=1)
+                # 在第 2 维（特征维）拼接 DC 和高频 SH 分量
+                # features_dc: [N, 3, 1], features_rest: [N, 3, K]
+                # 拼接后：[N, 3, K+1]
+                shs = torch.cat((features_dc, features_rest), dim=2)
     else:
         colors_precomp = override_color
 
