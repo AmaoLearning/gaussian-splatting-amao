@@ -74,6 +74,14 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         scaling = overrides["scaling"]
         rotating = overrides["rotation"]
         
+        # 验证 means3D 维度正确性
+        if means3D.dim() != 2 or means3D.shape[1] != 3:
+            raise ValueError(
+                f"means3D must have dimensions (num_points, 3), "
+                f"but got shape {means3D.shape}. "
+                f"Please check that subset indices are 1D tensor."
+            )
+        
         # 更新 screenspace_points 以匹配子集大小
         screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
         try:
@@ -116,10 +124,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             if separate_sh:
                 dc, shs = features_dc, features_rest
             else:
-                # 在第 2 维（特征维）拼接 DC 和高频 SH 分量
-                # features_dc: [N, 3, 1], features_rest: [N, 3, K]
-                # 拼接后：[N, 3, K+1]
-                shs = torch.cat((features_dc, features_rest), dim=2)
+                shs = torch.cat((features_dc, features_rest), dim=1)
     else:
         colors_precomp = override_color
 

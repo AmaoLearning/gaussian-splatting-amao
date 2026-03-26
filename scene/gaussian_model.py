@@ -496,11 +496,12 @@ class GaussianModel:
         获取指定索引的子集参数（用于渲染覆盖）
         
         Args:
-            indices: 高斯点索引
+            indices: 高斯点索引，应为 1D 张量
             
         Returns:
             子集参数字典，直接用于 gaussian_renderer.render() 的 overrides 参数
         """
+        
         return {
             "xyz": self.get_xyz[indices],
             "features_dc": self.get_features_dc[indices],

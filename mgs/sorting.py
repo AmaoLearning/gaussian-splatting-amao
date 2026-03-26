@@ -96,18 +96,21 @@ class SplatSorter:
                 )
             else:
                 order_key = splats["order_key"]
-                return torch.argsort(order_key, descending=False)
+                # Ensure order_key is 1D
+                return torch.argsort(order_key.squeeze(), dim=0, descending=False)
         strategy, descending = self._parse_strategy()
         if strategy in {"size", "by_volume", "volume"}:
             # splats["scales"] are log-scales
             scales_exp = torch.exp(scales)
             # Calculate volume: product of x,y,z scales
             volume = scales_exp.prod(dim=1)
+            # Ensure volume is 1D
             # Sort descending: Largest (Coarse) -> Smallest (Fine)
-            return torch.argsort(volume, descending=descending)
+            return torch.argsort(volume.squeeze(), dim=0, descending=descending)
         if strategy == "by_opacity":
             opacities_sig = torch.sigmoid(opacities)
-            return torch.argsort(opacities_sig, descending=descending)
+            # Squeeze to ensure 1D if input is [N, 1]
+            return torch.argsort(opacities_sig.squeeze(), dim=0, descending=descending)
         if strategy == "by_sh_energy":
             if shN is not None and sh0 is not None:
                 sh0_squeeze = sh0.squeeze(1)
@@ -122,12 +125,14 @@ class SplatSorter:
                 score = (colors ** 2).sum(dim=1)
             else:
                 raise ValueError("SH energy sorting requires SH coeffs or colors.")
-            return torch.argsort(score, descending=descending)
+            # Ensure score is 1D
+            return torch.argsort(score.squeeze(), dim=0, descending=descending)
         if strategy == "by_color_variance":
             rgb = self._get_rgb(splats if not is_gaussian_model else {"sh0": sh0})
             mean_rgb = rgb.mean(dim=1, keepdim=True)
             variance = ((rgb - mean_rgb) ** 2).mean(dim=1)
-            return torch.argsort(variance, descending=descending)
+            # Ensure variance is 1D
+            return torch.argsort(variance.squeeze(), dim=0, descending=descending)
         if strategy == "random":
             return torch.randperm(means.shape[0], device=means.device)
         raise NotImplementedError(f"Unknown sort strategy: {self.strategy}")
