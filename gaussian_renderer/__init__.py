@@ -72,7 +72,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         features_dc = overrides["features_dc"]
         features_rest = overrides["features_rest"]
         scaling = overrides["scaling"]
-        rotations = overrides["rotation"]
+        rotating = overrides["rotation"]
         
         # 更新 screenspace_points 以匹配子集大小
         screenspace_points = torch.zeros_like(means3D, dtype=means3D.dtype, requires_grad=True, device="cuda") + 0
@@ -85,7 +85,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         means3D = pc.get_xyz
         opacity = pc.get_opacity
         scaling = pc.get_scaling
-        rotations = pc.get_rotation
+        rotating = pc.get_rotation
         features_dc = pc.get_features_dc
         features_rest = pc.get_features_rest
 
@@ -99,7 +99,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
         cov3D_precomp = pc.get_covariance(scaling_modifier)
     else:
         scales = scaling
-        rotations = rotations
+        rotations = rotating
 
     # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
     # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.
