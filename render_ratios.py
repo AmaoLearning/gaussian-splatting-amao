@@ -65,26 +65,14 @@ def render_set_with_ratios(
     
     if not quiet:
         print(f"\n总高斯点数量：{total_gaussians:,}")
-        print(f"\n渲染目录：{model_path}/{name}/ours_{iteration}")
     
     # 为每个比例渲染
     for ratio_idx, ratio in enumerate(tqdm(eval_ratios, desc="Rendering ratios", disable=quiet)):
         ratio_dir = f"ratio_{ratio:.2f}".replace('.', '_')
-        render_path = os.path.join(
-            model_path, 
-            name, 
-            f"ours_{iteration}", 
-            f"renders_{ratio_dir}",
-            "renders"
-        )
-        gts_path = os.path.join(
-            model_path, 
-            name, 
-            f"ours_{iteration}", 
-            f"renders_{ratio_dir}",
-            "gt"
-        )
+        render_path = os.path.join(model_path, name, ratio_dir)
         makedirs(render_path, exist_ok=True)
+        
+        gts_path = os.path.join(model_path, name, "gt")
         makedirs(gts_path, exist_ok=True)
         
         # 计算该比例的高斯数量
